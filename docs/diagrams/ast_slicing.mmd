@@ -1,0 +1,18 @@
+flowchart TD
+    A([Start: Identify Vulnerable Node]) --> B{Node Parsing Event}
+    B --> C[Extract Focus Node]
+    C --> D[Traverse Upward: Extract Containing Struct]
+    C --> E[Traverse Upward: Extract Related Imports]
+    C --> F[Traverse Downward: Extract Local Types]
+    C --> G[Traverse Downward: Extract Local Variables]
+    
+    D --> H[Merge Mechanism]
+    E --> H
+    F --> H
+    G --> H
+    
+    H --> I{Token Count < 1024?}
+    I -- Yes --> J[Syntax Independent Unit]
+    I -- No --> K[Prune Outermost Contexts]
+    K --> I
+    J --> L([End: Ready for Inference])

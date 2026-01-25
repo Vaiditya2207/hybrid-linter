@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant FS as File System
+    participant Scan as Scanner (Goroutine)
+    participant Analyze as Analysis Stage
+    participant Queue as Repair Queue
+    participant SLM as Repair Workers (llama.cpp)
+    participant Valid as Validation Stage
+
+    FS->>Scan: Read Go File
+    Scan->>Analyze: Parsed Tree-sitter AST
+    Analyze->>Analyze: Run SCM Queries
+    Analyze->>Analyze: AST Slicing (<1024 tokens)
+    Analyze->>Queue: Send Syntax Independent Unit (SIU)
+    Queue->>SLM: Pull SIU for processing
+    SLM->>SLM: Prompt Qwen2.5-Coder-1.5B
+    SLM->>Valid: Proposed Code Patch
+    Valid->>Valid: In-memory Tree.Edit
+    alt is Valid?
+        Valid->>FS: Apply syntactically correct patch
+    else Error Detected
+        Valid->>SLM: Extract S-Expression & Reprompt (up to 3x)
+    end

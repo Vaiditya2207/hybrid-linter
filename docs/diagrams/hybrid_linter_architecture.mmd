@@ -1,0 +1,16 @@
+graph TD
+    A[Source Buffer] -->|CST Generated| B(Tree-sitter Parser)
+    B -->|Identify Vulnerable Nodes| C{SCM Query Runner}
+    C -->|Identify Vulnerable Nodes| D[Vulnerable Nodes Context]
+    D -->|Context < 1024 Tokens| E[Local Inference Context]
+    
+    subgraph Local Inference Engine
+        E --> F[llama.cpp / Metal API]
+        F -->|Qwen2.5-Coder-1.5B Q4| G[Repair Suggestion]
+    end
+    
+    G --> H[Validation Logic]
+    H -->|In-memory Re-parse| I{Is Syntactically Valid?}
+    I -->|Yes| J[Success]
+    I -->|No| K[Error Diagnostic]
+    K -->|Feedback Re-prompt| E
