@@ -90,11 +90,11 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	scannerWg.Wait()
 
 	if len(allVulns) == 0 {
-		log.Printf("Pipeline completed in %s. No vulnerabilities found.", time.Since(startTime))
+		log.Printf("\033[32mPipeline completed in %s. No vulnerabilities found.\033[0m", time.Since(startTime))
 		return nil
 	}
 
-	log.Printf("Analysis complete. Found vulnerabilities in %d files. Proceeding to repair...", len(allVulns))
+	log.Printf("\033[33mAnalysis complete. Found vulnerabilities in %d files. Proceeding to repair...\033[0m", len(allVulns))
 
 	// Phase 3: Repair Workers
 	repairChan := make(chan repairJob, 100)
@@ -238,10 +238,9 @@ func (p *Pipeline) applyPatches(ctx context.Context, repairChan <-chan repairJob
 		case <-ctx.Done():
 			return
 		default:
-			// For Phase 5, we report the patch. Applying it cleanly to the byte array
-			// requires calculating AST byte offsets, which falls into Phase 6 or further refinement.
-			// MVP: just log the successful pipeline flow.
-			fmt.Printf("✅ [FILE: %s] Repaired %s at line %d:\n%s\n", job.file.path, job.vuln.Type, job.vuln.StartLine, job.fix)
+			// MVP: log the successful pipeline flow with vibrant ANSI colors
+			fmt.Printf("\033[32m✅ [FILE: %s] Repaired %s at line %d:\033[0m\n", job.file.path, job.vuln.Type, job.vuln.StartLine)
+			fmt.Printf("\033[36m%s\033[0m\n\n", job.fix)
 		}
 	}
 }
