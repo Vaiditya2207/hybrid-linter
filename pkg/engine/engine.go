@@ -17,20 +17,23 @@ type Engine struct {
 	ctx       gollama.LlamaContext
 }
 
-// NewEngine initializes the inference engine with the given model path.
+// InitBackend initializes the global llama.cpp backend. Must be called on main thread.
+func InitBackend() error {
+	// Pinning to b6076 because newer versions use .tar.gz which breaks gollama.cpp downloader
+	if err := gollama.LoadLibraryWithVersion("b6076"); err != nil {
+		return fmt.Errorf("failed to load gollama library: %w", err)
+	}
+	if err := gollama.Backend_init(); err != nil {
+		return fmt.Errorf("failed to initialize backend: %w", err)
+	}
+	return nil
+}
+
+// NewEngine initializes the inference engine model with the given model path.
+// This should be called from the thread that will perform inference (e.g., Metal requires this).
 func NewEngine(modelPath string) (*Engine, error) {
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("model file does not exist at %s", modelPath)
-	}
-
-	// Ensure the llama.cpp shared library is downloaded and loaded
-	// Pinning to b6076 because newer versions use .tar.gz which breaks gollama.cpp downloader
-	if err := gollama.LoadLibraryWithVersion("b6076"); err != nil {
-		return nil, fmt.Errorf("failed to load gollama library: %w", err)
-	}
-
-	if err := gollama.Backend_init(); err != nil {
-		return nil, fmt.Errorf("failed to initialize backend: %w", err)
 	}
 
 	// Load model with default params + GPU layers for M1
@@ -62,6 +65,9 @@ func NewEngine(modelPath string) (*Engine, error) {
 
 // Predict sends a prompt to the model and returns the generated repair suggestion.
 func (e *Engine) Predict(ctx context.Context, prompt string, maxTokens int) (string, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	tokens, err := gollama.Tokenize(e.model, prompt, true, false)
 	if err != nil {
 		return "", fmt.Errorf("tokenization failed: %w", err)
