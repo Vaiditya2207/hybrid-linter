@@ -12,10 +12,16 @@ type Parser struct {
 	engine *sitter.Parser
 }
 
-// NewParser creates a new Go parser instance.
+// NewParser creates a new Go parser instance (default for V1).
 func NewParser() *Parser {
+	return NewParserWithLanguage(golang.GetLanguage())
+}
+
+// NewParserWithLanguage enables Phase 7 V2 architecture, dynamically
+// wrapping new Tree-sitter syntax bindings without hardcoded behavior.
+func NewParserWithLanguage(lang *sitter.Language) *Parser {
 	p := sitter.NewParser()
-	p.SetLanguage(golang.GetLanguage())
+	p.SetLanguage(lang)
 	return &Parser{engine: p}
 }
 

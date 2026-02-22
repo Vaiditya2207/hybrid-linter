@@ -45,9 +45,10 @@ func NewEngine(modelPath string) (*Engine, error) {
 		return nil, fmt.Errorf("failed to load model: %w", err)
 	}
 
-	// Create context
+	// Create context. Setting NCtx and NBatch explicitly.
 	cparams := gollama.Context_default_params()
 	cparams.NCtx = 2048
+	cparams.NBatch = 2048
 	cparams.NThreads = int32(runtime.NumCPU())
 
 	ctx, err := gollama.Init_from_model(model, cparams)

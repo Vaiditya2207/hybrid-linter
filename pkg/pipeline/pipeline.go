@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -14,6 +12,7 @@ import (
 	"github.com/Vaiditya2207/hybrid-linter/pkg/engine"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/orchestrator"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/parser"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/scanner"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/slicer"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/validator"
 )
@@ -131,27 +130,23 @@ func (p *Pipeline) scanDirectory(ctx context.Context, fileChan chan<- fileJob, w
 	defer wg.Done()
 	defer close(fileChan)
 
-	err := filepath.Walk(p.targetDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && filepath.Ext(path) == ".go" {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-				source, err := os.ReadFile(path)
-				if err == nil {
-					fileChan <- fileJob{path: path, source: source}
-				}
-			}
-		}
-		return nil
-	})
+	scannerService := scanner.NewScanner([]string{".go", ".js", ".ts", ".py", ".c", ".cpp", ".rs", ".swift"})
+	out := make(chan scanner.FileResult, 100)
 
-	if err != nil {
-		log.Printf("Error scanning directory: %v", err)
+	// Run scanner in a separate goroutine
+	var scanWg sync.WaitGroup
+	scanWg.Add(1)
+	go func() {
+		defer scanWg.Done()
+		if err := scannerService.ScanDirectory(ctx, p.targetDir, out); err != nil {
+			log.Printf("Scanner traversal error: %v", err)
+		}
+	}()
+
+	for result := range out {
+		fileChan <- fileJob{path: result.Path, source: result.Content}
 	}
+	scanWg.Wait()
 }
 
 func (p *Pipeline) analyzeFiles(ctx context.Context, fileChan <-chan fileJob, vulnChan chan<- vulnJob, wg *sync.WaitGroup) {
