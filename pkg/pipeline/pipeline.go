@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/agent"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/engine"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/orchestrator"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/parser"
@@ -207,6 +209,7 @@ func (p *Pipeline) repairVulns(ctx context.Context, vulnChan <-chan vulnJob, rep
 	slcr := slicer.NewSlicer(1024)
 	vldr := validator.NewValidator(p.parser)
 	orch := orchestrator.NewOrchestrator(p.analyzer, slcr, eng, vldr, 3)
+	terminalAgent := agent.NewTerminalAgent(eng)
 
 	for job := range vulnChan {
 		for _, vuln := range job.vulns {
@@ -214,6 +217,19 @@ func (p *Pipeline) repairVulns(ctx context.Context, vulnChan <-chan vulnJob, rep
 			case <-ctx.Done():
 				return
 			default:
+				// V3 Feature: Trigger Chat Loop for human verification
+				bugDesc := fmt.Sprintf("%s found at %s:%d", vuln.Type, job.file.path, vuln.StartLine)
+				
+				// In a real CLI release, this would be guarded by a `-chat` flag.
+				// For this "Crazy" prototype, we enable it if a specific env/flag is set.
+				if os.Getenv("HYBRID_CHAT") == "1" {
+					contextSIU, _ := slcr.ExtractContext(job.file.source, vuln.FocusNode)
+					_, apply := terminalAgent.ChatLoop(ctx, contextSIU.String(), bugDesc)
+					if !apply {
+						continue
+					}
+				}
+
 				fix, err := orch.RepairVulnerability(ctx, job.file.source, &vuln)
 				if err == nil {
 					repairChan <- repairJob{file: job.file, vuln: vuln, fix: fix}
