@@ -12,6 +12,16 @@ import (
 	"github.com/smacker/go-tree-sitter/golang"
 )
 
+// HealthIssue represents a single templated diagnostic.
+type HealthIssue struct {
+	File        string
+	Line        int
+	CodeSnippet string
+	Type        string
+	Severity    string
+	Solution    string
+}
+
 // CodebaseHealth holds aggregated metadata about the project's structural integrity.
 type CodebaseHealth struct {
 	TotalFiles       int
@@ -20,15 +30,17 @@ type CodebaseHealth struct {
 	ComplexityScore  int
 	FileDistribution map[string]int
 	AnalysisTime     time.Duration
+	Issues           []HealthIssue
 }
 
 // Scorer analyzes a set of files to produce a health report.
 type Scorer struct {
-	analyzer *analyzer.Analyzer
+	analyzer  *analyzer.Analyzer
+	queryData []byte
 }
 
-func NewScorer(a *analyzer.Analyzer) *Scorer {
-	return &Scorer{analyzer: a}
+func NewScorer(a *analyzer.Analyzer, qd []byte) *Scorer {
+	return &Scorer{analyzer: a, queryData: qd}
 }
 
 // GenerateScore walks a directory using the Phase 7 scanner and computes metrics.
@@ -69,9 +81,21 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 
 		// Count unhandled errors as a primary health metric
 		// Using the embedded rules from Phase 6
-		vulns, err := s.analyzer.Analyze(ctx, tree.RootNode(), nil)
+		vulns, err := s.analyzer.Analyze(ctx, tree.RootNode(), s.queryData)
 		if err == nil {
 			health.Vulnerabilities += len(vulns)
+			for _, v := range vulns {
+				snip := string(file.Content[v.FocusNode.StartByte():v.FocusNode.EndByte()])
+				snip = strings.ReplaceAll(snip, "\n", " ")
+				health.Issues = append(health.Issues, HealthIssue{
+					File:        file.Path,
+					Line:        int(v.StartLine),
+					CodeSnippet: snip,
+					Type:        "Unhandled Error Definition",
+					Severity:    "High",
+					Solution:    "Implement explicit error checking (e.g., `if err != nil { return err }`) immediately after the variable declaration to prevent silent propagation.",
+				})
+			}
 		}
 
 		// Heuristic Complexity: Count functions and branches
