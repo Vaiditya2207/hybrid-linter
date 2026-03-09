@@ -111,6 +111,25 @@ func (e *Engine) Predict(ctx context.Context, prompt string, maxTokens int) (str
 	return output.String(), nil
 }
 
+// ResetKV flushes the context bounds completely, rescuing bounded Apple Metal RAM environments from slot panics.
+func (e *Engine) ResetKV() error {
+	if e.ctx != 0 {
+		gollama.Free(e.ctx)
+	}
+	
+	cparams := gollama.Context_default_params()
+	cparams.NCtx = 2048
+	cparams.NBatch = 2048
+	cparams.NThreads = int32(runtime.NumCPU())
+
+	ctx, err := gollama.Init_from_model(e.model, cparams)
+	if err != nil {
+		return fmt.Errorf("failed to reset context: %w", err)
+	}
+	e.ctx = ctx
+	return nil
+}
+
 // Close releases the model resources.
 func (e *Engine) Close() {
 	if e.ctx != 0 {
