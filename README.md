@@ -1,25 +1,25 @@
-# 🛠️ Hybrid Linter
+# Hybrid Linter
 
-### **Local-First AI Codebase Diagnostics & Autonomous Repair**
+### Local-First AI Codebase Diagnostics & Autonomous Repair
 [![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20(Metal)-orange.svg)](https://developer.apple.com/metal/)
 
-**Hybrid Linter** is a next-generation static analysis tool that bridges the gap between **deterministic AST queries** and **agentic AI reasoning**. It utilizes Tree-sitter for lightning-fast structural bug detection and locally-hosted LLMs for contextual diagnostics and automated repair.
+Hybrid Linter is a next-generation static analysis tool that bridges the gap between deterministic AST queries and agentic AI reasoning. It utilizes Tree-sitter for lightning-fast structural bug detection and locally-hosted LLMs for contextual diagnostics and automated repair.
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
-- **🚀 Metal-Accelerated Inference**: Native Apple Silicon support via `gollama.cpp` for ultra-fast local LLM execution.
-- **🧠 Agentic "Think" Mode**: Context-aware diagnostics that explain *why* a bug exists and *how* to fix it.
-- **🔄 Unified Memory Management**: Custom KV Cache flushing enables continuous analysis of 500+ issues on standard 8GB/16GB hardware.
-- **🛡️ 100% Private & Offline**: No API calls, no data leakage. Your source code never leaves your machine.
-- **🏗️ Tree-Sitter Core**: Uses Symbolic Code Mapping (SCM) for sub-millisecond structural pattern matching.
+- **Metal-Accelerated Inference**: Native Apple Silicon support via `gollama.cpp` for ultra-fast local LLM execution.
+- **Agentic "Think" Mode**: Context-aware diagnostics that explain *why* a bug exists and *how* to fix it.
+- **Unified Memory Management**: Custom KV Cache flushing enables continuous analysis of 500+ issues on standard 8GB/16GB hardware.
+- **100% Private & Offline**: No API calls, no data leakage. Your source code never leaves your machine.
+- **Tree-Sitter Core**: Uses Symbolic Code Mapping (SCM) for sub-millisecond structural pattern matching.
 
 ---
 
-## 📦 Installation
+## Installation
 
 Install the global CLI binary directly from source:
 
@@ -29,7 +29,7 @@ go install github.com/Vaiditya2207/hybrid-linter/cmd/hybrid-linter@latest
 
 ---
 
-## 🤖 Getting Started
+## Getting Started
 
 ### 1. Initialize the AI Environment
 Pull the optimized 1.5B parameter coding model into your global cache:
@@ -51,7 +51,7 @@ hybrid-linter -dir . -repair
 
 ---
 
-## 📝 Documentation & Results
+## Documentation & Results
 
 For a deep dive into the internal mechanics and real-world performance metrics:
 
@@ -60,5 +60,5 @@ For a deep dive into the internal mechanics and real-world performance metrics:
 
 ---
 
-## ⚖️ License
+## License
 Distributed under the MIT License. See `LICENSE` for more information.

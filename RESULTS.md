@@ -1,8 +1,8 @@
-# 📊 Showcase: okernel Stress Test Results
+# Showcase: okernel Stress Test Results
 
-This document showcases the performance and reasoning capabilities of **Hybrid Linter** when executed against the **okernel** codebase—a high-complexity kernel environment.
+This document showcases the performance and reasoning capabilities of Hybrid Linter when executed against the okernel codebase—a high-complexity kernel environment.
 
-## 📈 Executive Summary
+## Executive Summary
 
 | Metric | Result |
 | :--- | :--- |
@@ -14,7 +14,7 @@ This document showcases the performance and reasoning capabilities of **Hybrid L
 
 ---
 
-## 🧠 Selected AI Diagnostics (Think Mode)
+## Selected AI Diagnostics (Think Mode)
 
 Below are actual extracts from the LLM's diagnostic stream during the stress test.
 
@@ -32,8 +32,8 @@ Below are actual extracts from the LLM's diagnostic stream during the stress tes
 
 ---
 
-## 🚀 Performance Benchmarks: KV Cache Durability
+## Performance Benchmarks: KV Cache Durability
 
-Hybrid Linter was tested for memory stability. Even after generating **516 bespoke solutions** sequentially on an **8GB M2 MacBook Air**, the memory pressure remained constant due to our native **KV Reset** architecture.
+Hybrid Linter was tested for memory stability. Even after generating 516 bespoke solutions sequentially on an 8GB M2 MacBook Air, the memory pressure remained constant due to our native KV Reset architecture.
 
 > **Result**: 0 resource panics, 100% solution completion rate.
