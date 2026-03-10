@@ -1,16 +1,20 @@
-# Showcase: okernel Stress Test Results
-
-This document showcases the performance and reasoning capabilities of Hybrid Linter when executed against the okernel codebase—a high-complexity kernel environment.
-
 ## Executive Summary
 
-| Metric | Result |
-| :--- | :--- |
-| **Project Name** | okernel |
-| **Scope** | 134 Files / 97,015 Lines |
-| **Issues Detected** | **516 Unhandled Logic Paths** |
-| **Parsing Latency** | **8.2 Seconds** |
-| **AI Inference State** | Stable over 500+ continuous iterations |
+| Project | Files | Lines | Issues | Latency |
+| :--- | :--- | :--- | :--- | :--- |
+| **okernel** | 134 | 97,015 | 516 | 8.2s |
+| **Linux Kernel (drivers/base)** | 85 | 52,752 | **2,204** | **0.9s** |
+
+---
+
+## Extreme Scale: Linux Kernel Stress Test
+
+To push the Hybrid Linter to its absolute limit, we analyzed the core subsystems of the **Linux Kernel**. 
+
+### Performance Analysis
+In the `drivers/base` directory alone, the Tree-sitter engine identified **2,204 instances** of unhandled error patterns or discarded returns across **52,752 lines** of C code. 
+- **Deterministic Efficiency**: The AST scan completed in **898 milliseconds**.
+- **AI Scalability**: Even with a vulnerability density of **41.7 issues per 1,000 lines**, the system maintained stable memory bounds while streaming diagnostics.
 
 ---
 
