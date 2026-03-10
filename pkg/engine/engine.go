@@ -108,7 +108,14 @@ func (e *Engine) Predict(ctx context.Context, prompt string, maxTokens int) (str
 		}
 	}
 
-	return output.String(), nil
+	result := output.String()
+	// Clean up raw BPE tokenizer artifacts (GPT2/Qwen token space mapping)
+	result = strings.ReplaceAll(result, "Ġ", " ")
+	result = strings.ReplaceAll(result, "Ċ", "\n")
+	result = strings.ReplaceAll(result, "č", "\n")
+	result = strings.ReplaceAll(result, "", "")
+
+	return result, nil
 }
 
 // ResetKV flushes the context bounds completely, rescuing bounded Apple Metal RAM environments from slot panics.
