@@ -1,51 +1,64 @@
-# Hybrid Linter: Local AI Code Diagnostics 🚀
+# 🛠️ Hybrid Linter
 
-A lightning-fast AST codebase analyzer and automated repair engine powered by Apple Metal-accelerated Local LLMs (via `gollama.cpp`). 
+### **Local-First AI Codebase Diagnostics & Autonomous Repair**
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20(Metal)-orange.svg)](https://developer.apple.com/metal/)
 
-## Key Features
-- **Deterministic SCM AST Queries**: Instantly find structural bugs, unhandled errors, and insecure definitions via Tree-sitter.
-- **Local AI Context Processing (`think` mode)**: Seamlessly stream targeted LLM inferences to explicitly diagnose, explain, and automatically fix AST targets in pure markdown. 
-- **Unified Global Cache**: Dynamically leverages Apple M-Series RAM buffering, guaranteeing zero-panic KV cache clearing during loops of hundreds of inferences!
+**Hybrid Linter** is a next-generation static analysis tool that bridges the gap between **deterministic AST queries** and **agentic AI reasoning**. It utilizes Tree-sitter for lightning-fast structural bug detection and locally-hosted LLMs for contextual diagnostics and automated repair.
+
+---
+
+## 🌟 Key Features
+
+- **🚀 Metal-Accelerated Inference**: Native Apple Silicon support via `gollama.cpp` for ultra-fast local LLM execution.
+- **🧠 Agentic "Think" Mode**: Context-aware diagnostics that explain *why* a bug exists and *how* to fix it.
+- **🔄 Unified Memory Management**: Custom KV Cache flushing enables continuous analysis of 500+ issues on standard 8GB/16GB hardware.
+- **🛡️ 100% Private & Offline**: No API calls, no data leakage. Your source code never leaves your machine.
+- **🏗️ Tree-Sitter Core**: Uses Symbolic Code Mapping (SCM) for sub-millisecond structural pattern matching.
+
+---
 
 ## 📦 Installation
 
-To globally install the `hybrid-linter` binary into your standard Go environment without any manual compiler overhead, run:
+Install the global CLI binary directly from source:
+
 ```bash
 go install github.com/Vaiditya2207/hybrid-linter/cmd/hybrid-linter@latest
 ```
 
-Ensure your `$(go env GOPATH)/bin` is added to your `$PATH`.
+---
 
-## 🤖 Model Setup
+## 🤖 Getting Started
 
-`hybrid-linter` utilizes quantized `.gguf` neural weights to infer solutions locally. This eliminates API fees and completely protects your proprietary source code offline. The tool natively downloads and caches the required GGUF weights locally to `~/.hybrid-linter/models`.
-
-To seamlessly pull down the recommended **1.5B Qwen Coding Model**, simply type:
+### 1. Initialize the AI Environment
+Pull the optimized 1.5B parameter coding model into your global cache:
 ```bash
 hybrid-linter install-model qwen-1.5b
 ```
-*(Alternative support provided for `llama-3b`)*
 
-## 🛠️ Usage Guides
-
-### 1. Generating AI Health Reports
-Pipe an entire codebase topology through the fast deterministic logic and invoke the LLM inference engine sequentially to stream root-cause bug summaries and proposed fixes:
+### 2. Generate a "Think" Mode Report
+Run a deep-context diagnostic on any project directory:
 ```bash
-hybrid-linter -dir . -health -mode think
-```
-*(Note: To run a static logic baseline without waking the LLM Engine, use `-mode fast`)*
-
-### 2. Autonomous Local Bug Repair 
-Attempt to leverage the contextual processor to completely rewrite malfunctioning file logic automatically:
-```bash
-hybrid-linter -dir /path/to/project -repair
+hybrid-linter -dir /path/to/project -health -mode think
 ```
 
-### 3. Native Queries & Profiling
-If you wish to overwrite the default `.scm` queries, you can supply your own AST rules natively:
+### 3. Trigger Autonomous Repair
+Automatically patch unhandled errors and AST vulnerabilities:
 ```bash
-hybrid-linter -dir . -query my_custom_rule.scm -memprofile out.prof
+hybrid-linter -dir . -repair
 ```
 
-## Advanced Settings & CGO Environments
-This application builds directly against raw C-pointers in MacOS via `gollama.cpp`. Because it strictly dynamically extracts its `dylib` pointers internally, you do not need `make` natively. However, note that inference loops scale based on available unified memory.
+---
+
+## 📝 Documentation & Results
+
+For a deep dive into the internal mechanics and real-world performance metrics:
+
+- [**Working Process (Architecture)**](PROCESS.md) - How the Hybrid Pipeline works.
+- [**Case Study: okernel Stress Test**](RESULTS.md) - Performance benchmarks and AI results.
+
+---
+
+## ⚖️ License
+Distributed under the MIT License. See `LICENSE` for more information.
