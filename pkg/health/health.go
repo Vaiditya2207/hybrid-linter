@@ -112,7 +112,7 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 		}
 
 		// Count unhandled errors as a primary health metric
-		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, mustCheckFuncs, lspClient, file.Path)
+		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, mustCheckFuncs, lspClient, nil, file.Path)
 		if err == nil {
 			health.Vulnerabilities += len(vulns)
 			for _, v := range vulns {

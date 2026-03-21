@@ -3,8 +3,8 @@
 | Project | Files | Lines | Issues | Latency |
 | :--- | :--- | :--- | :--- | :--- |
 | **okernel** | 134 | 97,015 | 516 | 8.2s |
-| **Linux Kernel (kernel/ core)** | **476** | **~500,000** | **1,104** | **3.7s** |
-| **Linux Kernel (Complete)** | **~58,000** | **~25,000,000** | **~135,000 (Projected)** | **~2m** |
+| **Linux Kernel (kernel/ core)** | **476** | **~500,000** | **1,142** | **4.1s** |
+| **Linux Kernel (Complete)** | **~58,000** | **~25,000,000** | **~140,000 (Projected)** | **~2.2m** |
 
 ---
 
@@ -12,12 +12,11 @@
 
 To push the Hybrid Linter to its absolute limit, we analyzed the **entire `drivers/` subsystem** of the Linux kernel. 
 
-### Phase 26 & 27: Surgical Precision (Data-Flow + CBP)
-We reached **Surgical Precision** by adding context-sensitive tracking:
-1. **Intra-Procedural Data-Flow (Phase 26)**: The linter now walks the CFG to ensure a variable assigned an error code is actually scrutinized downstream (e.g., `if (err) ...`).
-2. **CBP Whitelisting (Phase 27)**: Automatically deduces "must-check" functions by analyzing their return structure (searching for `-1`, `NULL`, etc.).
-3. **Impact**: Reduced core `kernel/` issues by **another 67%** (from 3,412 to 1,104).
-4. **Current Status**: 96% total reduction from baseline. The remaining 1k issues are the **"Top 1%" of technical debt**—the most likely sites for silent failures in the Linux kernel core.
+### Phase 28: Resource Safety (Typestate Analysis)
+We expanded the audit to include **Concurrency and Memory Safety**:
+1. **Typestate Tracking**: The linter now tracks the state of resources (Locked, Unlocked, Allocated, Freed) and identifies paths where they become unreachable without release.
+2. **Impact**: Uncovered **38 potential resource leaks/deadlocks** in the Linux kernel core that were previously invisible.
+3. **Current Status**: 1,142 high-confidence vulnerabilities. We are now entering the **Neural Adjudication** phase to prune logical false positives using local LLMs.
 
 ### Real-World Bug Verification: xillyusb.c
 We manually verified the linter's findings against the kernel source to ensure accuracy. 

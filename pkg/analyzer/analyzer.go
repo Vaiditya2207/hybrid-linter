@@ -53,7 +53,7 @@ func NewAnalyzerForCPP() *Analyzer {
 }
 
 // Analyze runs the given SCM query against the root node of a tree.
-func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte, queryData []byte, voidFuncs map[string]bool, mustCheckFuncs map[string]bool, lspClient *lsp.Client, filePath string) ([]Vulnerability, error) {
+func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte, queryData []byte, voidFuncs map[string]bool, mustCheckFuncs map[string]bool, lspClient *lsp.Client, adjudicator *Adjudicator, filePath string) ([]Vulnerability, error) {
 	q, err := sitter.NewQuery(queryData, a.Language)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query: %w", err)
@@ -147,6 +147,20 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 	// Phase 28: Resource Leak Detection
 	leaks := ScanForLeaks(root, source)
 	vulnerabilities = append(vulnerabilities, leaks...)
+
+	// Phase 29: Neural Adjudication
+	if adjudicator != nil && len(vulnerabilities) > 0 {
+		var pruned []Vulnerability
+		for _, v := range vulnerabilities {
+			reachable, reason := adjudicator.Judge(ctx, source, &v)
+			if reachable {
+				pruned = append(pruned, v)
+			} else {
+				fmt.Printf("\033[35m[Neural Pruned] %s:%d: %s\033[0m\n", filePath, v.StartLine, reason)
+			}
+		}
+		vulnerabilities = pruned
+	}
 
 	return vulnerabilities, nil
 }

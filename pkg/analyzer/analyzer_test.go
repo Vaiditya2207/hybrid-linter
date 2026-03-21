@@ -36,7 +36,7 @@ func main() {
   (#match? @err "^err$")
 )
 `
-	vulns, err := a.Analyze(context.Background(), tree.RootNode(), sourceWithIssue, []byte(query), nil, nil, nil, "")
+	vulns, err := a.Analyze(context.Background(), tree.RootNode(), sourceWithIssue, []byte(query), nil, nil, nil, nil, "")
 	if err != nil {
 		t.Fatalf("failed to analyze: %v", err)
 	}
