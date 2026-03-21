@@ -1,6 +1,6 @@
 # Advancing Hybrid Static Analysis: Relational Data-Flow, Inter-procedural Logic, and Neural-Symbolic Integration for Kernel-Scale Auditing
 
-The evolution of program analysis from simple structural pattern matching to compiler-grade auditing suites represents a critical response to the burgeoning complexity of modern software ecosystems. At the vanguard of this transition is the Hybrid Linter architecture, which has effectively bridged the gap between the rapid, syntactic traversal of Tree-sitter and the deep, type-truth resolution provided by the Clangd Language Server Protocol (LSP). By integrating these technologies with local Large Language Models (LLMs) like Qwen2.5-Coder for autonomous repair, contemporary auditing frameworks have achieved unprecedented precision, exemplified by an 88% reduction in false positives across 500,000 lines of the Linux kernel core. However, to transcend current limitations and achieve a comprehensive "god-mode" of program verification, the architecture must expand its capabilities into the realms of global data-flow tracking, inter-procedural context sensitivity, and path-sensitive concurrency safety.
+The evolution of program analysis from simple structural pattern matching to compiler-grade auditing suites represents a critical response to the burgeoning complexity of modern software ecosystems. At the vanguard of this transition is the Hybrid Linter architecture, which has effectively bridged the gap between the rapid, syntactic traversal of Tree-sitter and the deep, type-truth resolution provided by the Clangd Language Server Protocol (LSP). By integrating these technologies with local Large Language Models (LLMs) like Qwen2.5-Coder for autonomous repair, contemporary auditing frameworks have achieved unprecedented precision, exemplified by a 99.6% reduction in false positives across 500,000 lines of the Linux kernel core. However, to transcend current limitations and achieve a comprehensive "god-mode" of program verification, the architecture must expand its capabilities into the realms of global data-flow tracking, inter-procedural context sensitivity, and path-sensitive concurrency safety.
 
 ---
 
@@ -25,36 +25,32 @@ To move beyond single-expression checks toward comprehensive data-flow tracking,
 
 ### Declarative Representation of Kernel Facts
 
-The integration of a Datalog engine like Souffle into the hybrid architecture enables the conversion of AST nodes and LSP facts into relational tables. Souffle's ability to compile Datalog programs into parallel C++ code ensures that the analysis remains performant even when scaled to the millions of lines of code found in the Linux kernel. In this relational model, facts such as function calls, variable assignments, and control-flow edges are represented as tuples in a database.
+The integration of a Datalog engine like Souffle into the hybrid architecture enables the conversion of AST nodes and LSP facts into relational tables. Souffle's ability to compile Datalog programs into parallel C++ code ensures that the analysis remains performant even when scaled to the millions of lines of code found in the Linux kernel.
 
 | Relation | Domain | Description |
 | :--- | :--- | :--- |
-| `Edge(n: symbol, m: symbol)` | Control-Flow | Defines a directed edge between program points n and m. |
-| `Assign(v: symbol, e: symbol, p: symbol)` | Data-Flow | Variable v is assigned expression e at program point p. |
-| `Call(f: symbol, p: symbol)` | Call Graph | Function f is invoked at program point p. |
-| `Checked(v: symbol, p: symbol)` | Error Logic | Variable v is subjected to a conditional check at point p. |
-
-The tracking of unhandled returns is then expressed through inductive rules. A definition `d` of a variable `v` reaches a statement `u` if there is a path from `d` to `u` that does not contain a re-definition of `v`. If the variable `v` represents an error code from a critical function call, and no `Checked(v, p)` relation exists on any reachable path, the auditing suite can flag a high-confidence vulnerability. This method effectively solves the "Go Error Discard" problem by identifying not just the use of the blank identifier `_`, but also scenarios where a named error variable is assigned but never scrutinized.
+| `Edge(n, m)` | Control-Flow | Directed edge between program points n and m. |
+| `Assign(v, e, p)` | Data-Flow | Variable v is assigned expression e at program point p. |
+| `Call(f, p)` | Call Graph | Function f is invoked at program point p. |
+| `Checked(v, p)` | Error Logic | Variable v is subjected to a conditional check at point p. |
 
 ### Optimization via Differential Datalog
 
-While traditional Datalog engines are powerful, the Linux kernel is a dynamic target with frequent commits. Differential Datalog (DDlog) provides a framework for incremental computation, allowing the auditing suite to update its results in response to code changes without re-analyzing the entire codebase from scratch. DDlog responds to input updates (insertions or deletions of program facts) by performing the minimum amount of work necessary to compute the changes in the output relations. This incrementality is essential for maintaining "compiler-grade" precision in a continuous integration environment, as it allows the tool to provide near-instant feedback on a developer's local changes.
+While traditional Datalog engines are powerful, the Linux kernel is a dynamic target with frequent commits. Differential Datalog (DDlog) provides a framework for incremental computation, allowing the auditing suite to update its results in response to code changes without re-analyzing the entire codebase from scratch. This incrementality is essential for maintaining "compiler-grade" precision in a continuous integration environment.
 
 ---
 
 ## Inter-procedural Analysis and the Context-Sensitivity Challenge
 
-Deep auditing requires moving across function boundaries to verify if a function's return value must be handled by its caller. This is particularly relevant for functions annotated with `__must_check` (the Linux equivalent of `__attribute__((warn_unused_result))`), where failure to verify the result can lead to severe security vulnerabilities or memory corruption.
+Deep auditing requires moving across function boundaries to verify if a function's return value must be handled by its caller.
 
 ### Call-String Contexts and IDE Frameworks
 
-To perform precise inter-procedural analysis, the suite must employ context sensitivity to avoid the "inter-procedural coincidence" problem, where data flows from different call sites are incorrectly merged. This is achieved through call-string contexts, where program points are labeled with a finite stack of call sites. The Interprocedural Distributive Environments (IDE) framework provides a formal methodology for solving these problems efficiently, with recent optimizations achieving up to 7x reductions in time and memory consumption on real-world C++ applications.
-
-An IDE-based solver can track the propagation of error obligations from a callee to its caller. If a function returns a value that signifies a resource allocation (e.g., `kmalloc`), the solver ensures that the obligation to check and eventually free that resource is passed up the call chain. This is vital for catching "Cross-File API Misuse," where an external library's error-returning function is treated as a `void` call by a developer unaware of the callee's implementation details.
+To perform precise inter-procedural analysis, the suite must employ context sensitivity to avoid the "inter-procedural coincidence" problem. The Interprocedural Distributive Environments (IDE) framework provides a formal methodology for solving these problems efficiently, with recent optimizations achieving up to 7x reductions in time and memory consumption.
 
 ### Callee Backtracking Prediction (CBP)
 
-When explicit annotations like `__must_check` are missing, the auditing suite can utilize Callee Backtracking Prediction (CBP) to deduce return value semantics. Most return values in C are determined by backtracking a few statements from the return statement. By searching backward for assignments and comparing them with common error patterns (e.g., `-1`, `NULL`, `-ENOMEM`), the suite can build a mapping of a function's possible return states. This derived knowledge is then stored in the Datalog database, enabling the tool to enforce return-check requirements even on un-annotated internal APIs.
+When explicit annotations like `__must_check` are missing, Callee Backtracking Prediction (CBP) deduces return value semantics by backtracking from return statements and comparing with common error patterns (e.g., `-1`, `NULL`, `-ENOMEM`).
 
 | Analysis Type | Scope | Mechanism | Goal |
 | :--- | :--- | :--- | :--- |
@@ -64,133 +60,141 @@ When explicit annotations like `__must_check` are missing, the auditing suite ca
 
 ---
 
-## Neural-Symbolic Execution: Pruning the Path Explosion
+## Neuro-Symbolic Verification: Natural Language Specification (NLS) Mapping
 
-The most significant barrier to deep program analysis is "path explosion" -- the exponential growth of possible execution paths in complex functions. Traditional symbolic execution engines like KLEE suffer from scalability issues when applied to the Linux kernel, often requiring dozens of hours to analyze relatively small modules. The "god-mode" architecture overcomes this by combining the analytical precision of symbolic execution with the pattern recognition capabilities of LLMs -- a paradigm known as LLM-based symbolic execution.
+The "semantic gap" between developer intent (documented in natural language) and low-level C implementation is the primary frontier for next-generation kernel auditing. The emergence of code-optimized LLMs enables the transformation of passive documentation into active, machine-verifiable logic.
 
-### Path-Based Decomposition via AutoBug
+### Docstring-to-Constraint Mapping
 
-The core insight of the AutoBug framework is to decompose program analysis into smaller, path-based subtasks that are more tractable for an LLM to reason over. Instead of translating the entire program into an SMT (Satisfiability Modulo Theories) formula, the system generalizes path constraints into a code-based representation that the LLM can interpret directly. This allows the LLM to act as a probabilistic inference engine, determining path feasibility and identifying vulnerabilities without the overhead of a formal theorem prover.
+The Linux kernel maintains an extensive repository of structured documentation through the kernel-doc format. These docstrings define critical API contracts, including return value semantics, parameter validity, and caller requirements. Translating these natural language constraints into formal Datalog facts allows automated verification of API compliance.
 
-In this hybrid design, the LLM is used to intelligently narrow down potentially problematic code sections, extracting definitions of complex data structures and identifying "hotspots" where bugs are likely to occur. This approach has been shown to detect 90% of memory-related vulnerabilities in experimental trials while reducing analysis time by over 70%.
+**LLM-Based Translation Pipeline:**
+1. **Sentinel Phrase Extraction**: Identify constraint-bearing phrases in kernel-doc blocks (`@return`, `Note:`, `Context:`).
+2. **Structured Output Enforcement**: Use schema-constrained generation (e.g., Instructor/Pydantic models) to ensure the LLM produces type-safe `SemanticConstraint` objects, not free-form text.
+3. **Hybrid Validation**: Ground extracted facts against Clangd's actual type definitions to ensure "intent" aligns with "reality".
 
-### Structured Analysis Guidance (SAG) in Post-Refinement
-
-To minimize false positives in taint-style bug detection, the suite implements a post-refinement framework called BugLens. BugLens utilizes Structured Analysis Guidance (SAG) to scaffold the LLM's reasoning process through predefined program analysis procedures. This framework consists of several specialized agents:
-
-- **Security Impact Assessor (SecIA)**: Evaluates the potential consequences of a tainted data flow, such as whether an attacker could trigger a crash or privilege escalation.
-- **Constraint Assessor (ConA)**: Performs a multi-step analysis to evaluate if a bug is triggerable, focusing on "Bypass Conditions" (which must be negated to reach an operation) and "Direct Conditions" (necessary branches).
-- **Project Knowledge Agent (PKA)**: Provides the LLM with on-demand access to the broader codebase, allowing it to retrieve global context necessary for adjudicating complex inter-procedural alerts.
-
-| Phase | Agent | Goal | Methodology |
+| Specification | Example Docstring Fragment | Datalog Fact Template | Sentinel Guard Logic |
 | :--- | :--- | :--- | :--- |
-| Adjudication | SecIA | Filter benign flows | Arbitrary Control Hypothesis (AC-Hypo) |
-| Validation | ConA | Verify reachability | Stepwise Path Condition Analysis |
-| Contextualization | PKA | Resolve external calls | Global Codebase Indexing |
-
-This structured approach significantly enhances precision, improving the F1-score for vulnerability detection in the Linux kernel by approximately seven-fold.
+| Return Semantics | `@return: -EINVAL if @foo is NULL` | `return_val(F, -EINVAL) :- param_state(F, foo, NULL).` | `if (foo == NULL) return -EINVAL;` |
+| Pre-conditions | `Note: Caller must hold @lock` | `precondition(F, holds_lock(lock)).` | `BUG_ON(!lock_is_held(lock));` |
+| Context Constraints | `Context: Process context. May sleep` | `context_req(F, process). sleep_allowed(F).` | `might_sleep();` |
+| Side-Effects | `Takes and releases the RCU lock` | `acquires(F, rcu). releases(F, rcu).` | `rcu_read_lock(); ... rcu_read_unlock();` |
 
 ---
 
-## Concurrency Safety and Resource Leak Analysis
+## Microscopic Error-Handling Consistency (EHC): The Hector Algorithm
 
-Detecting missing `unlock` calls in error-return paths is a formidable challenge due to the lack of appropriate abstractions in the C language. A failure to release a mutex or spinlock can lead to system-wide deadlocks, while omitting a memory release leads to exhaustion and crashes.
+Error handling in C systems software is fragile due to the requirement for manual resource unwinding on every failure path. The **Hector algorithm** adopts a "microscopic" approach, focusing on the internal consistency of error-handling code (EHC) within individual functions.
 
-### Typestate Tracking and the Must-Call Property
+### Principles
 
-The architecture addresses concurrency safety through "typestate" analysis, which tracks the state of a resource (e.g., Locked, Unlocked, Allocated, Freed) across all possible execution paths. This is formalized through the "MustCall" property, where every instance of a specific type (like a lock or a file handle) must have a designated "release" method called on it before it becomes unreachable.
+1. **Acquisition Identification**: Functions returning pointer-typed values or using reference arguments for output are prioritized as acquisitions.
+2. **Release Identification**: A function call is considered a release if it is the final operation on a resource and its return value is not checked.
+3. **Path-Sensitive Tracking**: Track the state of each acquired resource across the function's CFG, determining which resources are "live" at any error point.
+4. **Exemplar-Based Comparison**: Requires an "exemplar" path—a correct EHC block. If other EHC blocks reachable from the same acquisition omit the operation, a bug is flagged.
 
-The suite uses Datalog to enforce these properties intra-procedurally. A source node represents the acquisition of a resource (e.g., `mutex_lock`), and a sink node represents its release. The analysis reports a leak if there exists at least one control-flow path from the source to the function's exit that does not traverse a sink node. This is particularly critical for "Exceptional Paths" -- the complex `goto` chains frequently used in kernel error handling.
+This methodology is particularly effective for the Linux kernel, where **52% of detected faults involve acquisition/release pairs that appear fewer than 15 times** in the entire codebase, making them invisible to global statistical miners.
 
-### Microscopic Consistency in Error-Handling Code
+### HERO: Detecting Disordered Error Handling (DiEH)
 
-Traditional macroscopic tools that scan for global patterns often miss localized resource-release omissions. The suite adopts a "microscopic" algorithm based on the observation that nearby blocks of error-handling code (EHC) typically require the same cleanup operations. By comparing the cleanup labels at the end of a function, the tool can identify inconsistencies. For example, if three error paths jump to a label that unregisters a driver, but a fourth path (triggered by a minor conflict) jumps directly to the function exit, the suite flags the latter as an omission fault.
+The **HERO** (Handling ERrors Orderly) system extends Hector using "delta-based pairing" to identify cases where cleanup operations are present but performed in incorrect order or are redundant.
 
-This approach, implemented in tools like Hector, is independent of the global frequency of API usage, allowing it to find faults in rarely-executed code paths that common pattern-miners would ignore.
-
-| Resource Type | Acquisition | Release | Common Failure Pattern |
+| Analysis Type | Primary Target | Detection Mechanism | Bug Category |
 | :--- | :--- | :--- | :--- |
-| Mutex | `mutex_lock` | `mutex_unlock` | Missing unlock on `if (err) return;` path. |
-| Spinlock | `spin_lock` | `spin_unlock` | Incorrect nesting leading to deadlock. |
-| Device Memory | `devm_kzalloc` | Automatic | Manual free call on managed resource (Double Free). |
-| Platform Driver | `platform_driver_register` | `platform_driver_unregister` | Missing unregister on failure of subsequent device add. |
+| Hector (Original) | Resource Omissions | Intra-procedural consistency of releases | Memory/Resource Leaks |
+| HERO (Extended) | Disordered Cleanup | EH stack unwinding and delta-based pairing | DiEH (Order/Redundancy) |
+| NLS Audit | Contract Violation | Comparison of extracted docstring facts with code | Semantic Divergence |
+| DSAC | Context Violations | Summary-based analysis of atomic context paths | SAC (Sleep-in-Atomic) |
 
 ---
 
-## Knowledge Synthesis: Mining Git Commits for Project-Specific Patterns
+## Concurrency Contract Verification and Execution Context Auditing
 
-The ultimate expansion toward "god-mode" involves the ability of the auditing suite to learn from the project's own history. Large-scale analysis of historical patches allows the system to identify Recurring Pattern Bugs (RPBs) -- vulnerabilities that have been fixed in one part of the kernel but persist in others.
+### Auditing Context Requirements via kernel-doc
 
-### BugStone and Patch Summarization
+The `Context:` section of kernel-doc defines the environment in which a function is safe to call:
+- **Sleep Capability**: Functions calling `mutex_lock` or `kmalloc(GFP_KERNEL)` must not be called from atomic context.
+- **Atomic and Interrupt Contexts**: Functions marked for "Interrupt context" must not access user-space memory or call blocking functions.
+- **Locking Expectations**: Pre-condition facts verifiable at every call site using Datalog.
 
-The BugStone framework leverages LLMs to summarize the details of a single exemplar patch into a precise coding rule. This rule captures the semantic essence of the bug (e.g., "always check the return value of `clks_prepare_enable` before proceeding") and the specific API functions involved. The suite then uses lightweight static analysis to identify all potential violations of this rule across the entire 20-million-line kernel source.
+### DSAC: Detective of Sleep-in-Atomic-Context
 
-In a large-scale evaluation, BugStone identified over 22,000 potential coding rule violations in the latest Linux kernel, with hundreds confirmed by maintainers as valid security bugs, including invalid pointer dereferences and resource leaks. By integrating this "historical consciousness" into the audit pipeline, the suite becomes a self-evolving entity that grows more effective with every new patch merged into the mainline.
+**DSAC** employs summary-based analysis to identify code executed in atomic contexts. It uses connection-based alias analysis to track function pointers and path-checking to filter false positives. In evaluations on Linux 4.17, DSAC identified **over 1,000 real SAC bugs**, demonstrating that context drift is a pervasive issue that traditional static analysis overlooks.
 
-### ICL-Based Commit Analysis
+### Clang Context Analysis (Clang 22+)
 
-The use of In-Context Learning (ICL) allows the suite's LLM to generate high-quality commit messages and analyze code changes without extensive model tuning. By providing the LLM with a few demonstrations of how specific bug types are fixed, the "Parse-Check-Retry" loop can be augmented to generate repairs that not only pass syntax checks but also adhere to the project's specific coding conventions and architectural patterns.
+Clang has introduced native support for "Context Analysis" enabling static checking of "context locks." A hybrid linter can bridge the annotation gap by using LLMs to automatically generate Clang annotations from natural language documentation.
 
 ---
 
-## Semantic Consistency and Natural Language Specification (NLS)
+## State-of-the-Art: BugStone and AutoBug
 
-Beyond structural and type-based checks, "god-mode" auditing must bridge the gap between human intent (documented in comments) and machine implementation. In the Linux kernel, `kernel-doc` comments often contain critical semantic constraints that are invisible to traditional compilers.
+### BugStone: Recurring Pattern Bug (RPB) Discovery
 
-### From Docstrings to Machine-Verifiable Constraints
+BugStone identifies Recurring Pattern Bugs from patch-seeded analysis:
+1. **Rule Generation**: An LLM analyzes a patch to summarize the underlying "security coding rule".
+2. **Call-Site Enumeration**: An LLVM-based analyzer scans the codebase for all matching API call sites.
+3. **Context-Aware Evaluation**: For each call site, BugStone extracts the caller function and evaluates rule compliance via LLM.
 
-The architecture can be extended with an **NLS-Parser** that utilizes LLMs to extract formal constraints from natural language documentation. By analyzing `@return`, `Note:`, and `Context:` tags in kernel-doc, the suite can automatically generate Datalog facts or "Sentinel Guards" for enforcement.
+In its Linux kernel evaluation, BugStone identified **22,000+ potential violations from just 135 unique RPBs**.
 
-**Example Transformation:**
-- **Comment**: `* Note: Caller must hold the @tree_lock before calling this function.`
-- **LLM Extraction**: `MustHold(func: audit_tree_lookup, lock: tree_lock)`
-- **Datalog Enforcement**: `Violation(p) :- Call("audit_tree_lookup", p), !InLockScope("tree_lock", p).`
+### AutoBug: LLM-Powered Symbolic Execution
 
-### Microscopic Error-Handling Consistency (EHC) Revisited
+AutoBug replaces traditional SMT solvers with LLMs, enabling direct reasoning over original source code:
+- **Path-Based Decomposition**: Partitions the CFG into tractable sub-path prompts.
+- **Strongest Post-condition (sp) Transformer**: Path constraints as `sp` predicates—generic code representations describing state after each execution step.
 
-While EHC focuses on label-consistency, it can be significantly enhanced by combining it with comment analysis. If a comment states that a function "returns -EAGAIN on resource conflict," but the EHC analysis shows one specific error path returns `0` (success), the linter can flag a "Semantic Divergence" bug. This represents a higher class of logical failure than a simple unhandled return, as it indicates a violation of the API's documented contract.
+| Property | Traditional SE (KLEE) | AutoBug (LLM-Powered) |
+| :--- | :--- | :--- |
+| Solver Type | SMT (Z3, Alt-Ergo) | Neural Oracle (LLM) |
+| Path Explosion | Unmitigated | Decomposed into sub-path prompts |
+| Loop Handling | Unrolling (non-termination) | Neural reasoning over loop structures |
+| Environment | Manual modeling required | LLM intrinsic world knowledge |
 
-| Feature | Input Source | Analysis Type | Target Bug Class |
-| :--- | :--- | :--- | :--- |
-| **Doc-Contract** | `kernel-doc` / Comments | NLS Translation | API Contract Violation / Locking Misuse |
-| **Micro-EHC** | Local Error Labels | Structural Symmetry | Omitted Cleanup / Inconsistent Exit States |
-| **Logic Mining** | Git History + LLM | Pattern Recognition | Recurrent Semantic Regressions (RPBs) |
+---
+
+## Low-Latency Local-First Implementation Strategies
+
+### Qwen2.5-Coder Model Family Selection
+
+| Parameter Count | VRAM (Q4_K_M) | Suggested Role |
+| :--- | :--- | :--- |
+| 1.5B | ~1.2 GB | Speculative draft model |
+| 3B | ~2.5 GB | Lightweight logic extraction |
+| 7B | ~5.5 GB | Primary semantic adjudicator |
+| 14B | ~10 GB | High-accuracy logic synthesis |
+
+### Speculative Decoding for Inference Speed
+
+Pairing a 7B "target" model with a 1.5B "draft" model enables multi-token generation per inference step. The expected accepted tokens τ is:
+
+**τ = (1 - α^(γ+1)) / (1 - α)**
+
+where α represents draft-target agreement probability. For structured tasks like Datalog fact extraction, α typically exceeds 0.6, yielding **2-3x speed improvement**.
+
+### KV Cache Optimization
+
+The linter should utilize "truncated slicing" (AutoBug) to remove irrelevant statements while preserving verification-critical logic, reducing million-token programs into concise prompts. Frameworks like vLLM with PagedAttention manage memory traffic efficiently for interactive linting.
 
 ---
 
 ## Implementation Strategy for Global Auditing
 
-The implementation of these advanced capabilities requires a stratified approach that balances the computational cost of deep reasoning with the necessity of whole-program coverage. The resulting architecture is a recursive pipeline that continuously refines its findings.
-
 ### Step 1: Global Fact Extraction
-
-The suite begins by compiling the entire target project into a relational database. This involves extracting AST facts from Tree-sitter and type-truth from Clangd LSP for every translation unit. This data is then merged into a global Datalog state using Souffle.
+Compile the entire target project into a relational database using AST facts from Tree-sitter and type-truth from Clangd LSP.
 
 ### Step 2: Relational Deduction and Taint Analysis
-
-The Datalog engine executes a series of "Core Audits" that define the baseline security policies. These include:
-
-- **Taint Propagation**: Tracking data from untrusted sources (e.g., user-mode syscall parameters) to sensitive sinks (e.g., memory allocations or array indices).
-- **Typestate Verification**: Ensuring that all resources acquired are correctly released along all feasible control-flow paths.
-- **Return-Check Propagation**: Identifying all functions returning error codes and verifying that their callers subjected the results to conditional logic.
+Execute core audits: Taint Propagation, Typestate Verification, Return-Check Propagation.
 
 ### Step 3: Neural Adjudication and Pruning
-
-The high-volume alerts from Step 2 are passed to the neural post-refinement layer. Using the BugLens SAG workflow, the suite prunes false positives by evaluating the semantic feasibility of the reported paths. The LLM acts as a judge, discarding alerts that involve benign idioms or unreachable error conditions.
+High-volume alerts are pruned via BugLens SAG workflow using LLM as a semantic judge.
 
 ### Step 4: Autonomous Repair and Verification
-
-For the remaining high-confidence alerts, the suite triggers the "Parse-Check-Retry" repair loop. The LLM generates a fix, which is then subjected to:
-
-- **AST Validation**: To confirm syntactic correctness.
-- **Symbolic Verification**: Using LLM-based symbolic execution to ensure the fix resolves the path constraint identified by the static analyzer.
-- **Regression Testing**: If a local build environment is available, the suite can automatically generate unit tests (rich tests) using model checkers like CBMC to verify the patch under non-deterministic inputs.
+Remaining high-confidence alerts trigger the "Parse-Check-Retry" repair loop with AST validation, symbolic verification, and regression testing.
 
 ---
 
 ## Comparative Analysis of Static Analysis Frameworks
-
-The hybrid architecture stands in contrast to traditional tools by prioritizing the synergy between formal logic and neural reasoning. While tools like Coccinelle and Smatch are invaluable for the Linux kernel, they often lack the path-sensitive depth and semantic flexibility required to capture the most complex logic flaws.
 
 | Framework | Primary Engine | Strength | Weakness |
 | :--- | :--- | :--- | :--- |
@@ -198,26 +202,24 @@ The hybrid architecture stands in contrast to traditional tools by prioritizing 
 | Smatch | Data-flow + Heuristics | Deep kernel-specific knowledge | High false-positive rate on complex paths. |
 | Sparse | Compiler-based | Type checking and bitwise safety | Lacks inter-procedural analysis. |
 | KLEE | Symbolic Execution | High path-sensitive precision | Scalability/Path explosion issues. |
+| BugStone | LLM + LLVM | Recurring pattern detection at scale | Requires seed patches. |
+| AutoBug | LLM Symbolic Exec | Direct code reasoning without SMT | Depends on LLM reasoning quality. |
+| DSAC | Summary-based | Sleep-in-Atomic detection | Limited to context bugs only. |
 | Hybrid Linter | Tree-sitter + LSP + LLM | Semantic de-noising and repair | Requires significant compute for LLM layers. |
 
 ---
 
 ## The Future Outlook: Toward Autonomous Verification
 
-The ultimate objective of this architectural evolution is the realization of a system capable of autonomous formal verification. In this "god-mode" state, the suite does not merely identify bugs but provides a continuous, provable guarantee of a codebase's integrity. The convergence of Differential Datalog for incremental updates, IDE frameworks for context-sensitive data-flow, and LLM-guided symbolic execution for path pruning creates a platform where verification is as integrated as compilation.
+The ultimate objective is the realization of a system capable of autonomous formal verification. The convergence of Differential Datalog for incremental updates, IDE frameworks for context-sensitive data-flow, and LLM-guided symbolic execution for path pruning creates a platform where verification is as integrated as compilation.
 
-The results of recent research demonstrate the viability of this path. By utilizing LLMs to solve constraints that hinder traditional fuzzers and static analyzers, systems like HLPFUZZ and BugLens have achieved over 190% performance gains in code coverage and up to 7-fold increases in precision. For the Linux kernel, this means a future where critical unhandled returns and silent pointer failures are eliminated at the point of creation, transforming the auditing suite from a passive observer into an active guardian of system stability.
-
-As the hybrid architecture continues to mature, the integration of project-specific historical data via BugStone and the refinement of "MustCall" typestate tracking will enable the suite to handle the most intricate challenges of kernel-level programming. This synthesis of relational truth, formal rigor, and neural intelligence represents the pinnacle of modern program analysis, providing the surgical precision required to secure the foundations of global computing infrastructure.
+The integration of project-specific historical data via BugStone and the refinement of NLS-based contract verification will enable the suite to handle the most intricate challenges of kernel-level programming. This synthesis of relational truth, formal rigor, and neural intelligence represents the pinnacle of modern program analysis.
 
 ---
 
 ## Nuanced Conclusions for System Architecture
 
-The transition from a structural tool to a compiler-grade suite requires a fundamental commitment to three pillars:
-
-1. **Relational Totality**: Every aspect of the program -- from AST structure to LSP-derived type information -- must be treated as a relational fact, enabling the use of powerful logic programming for global analysis.
-2. **Semantic Contextualization**: LLMs should not be used as the primary engine of detection but as the primary engine of adjudication and repair. Their role is to "humanize" the abstract alerts generated by formal tools, distinguishing between technical violations and actual security risks.
-3. **Incremental Persistence**: In an environment as large as the Linux kernel, the ability to reuse intermediate results through frameworks like DDlog is not an optimization but a prerequisite for practical utility.
-
-By strictly adhering to these principles and expanding into the inter-procedural and concurrency domains, the Hybrid Linter architecture establishes a new paradigm for software auditing -- one that is as resilient as the codebases it seeks to protect.
+1. **Relational Totality**: Every program aspect must be treated as a relational fact for global analysis via logic programming.
+2. **Semantic Contextualization**: LLMs as the engine of adjudication and repair, not primary detection. Their role is to "humanize" abstract alerts.
+3. **Incremental Persistence**: Reuse of intermediate results through DDlog is a prerequisite for practical utility at kernel scale.
+4. **Documentation as Truth**: Natural language specifications become enforceable contracts, bridging the semantic gap between intent and implementation.
