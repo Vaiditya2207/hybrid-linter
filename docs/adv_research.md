@@ -133,6 +133,31 @@ The use of In-Context Learning (ICL) allows the suite's LLM to generate high-qua
 
 ---
 
+## Semantic Consistency and Natural Language Specification (NLS)
+
+Beyond structural and type-based checks, "god-mode" auditing must bridge the gap between human intent (documented in comments) and machine implementation. In the Linux kernel, `kernel-doc` comments often contain critical semantic constraints that are invisible to traditional compilers.
+
+### From Docstrings to Machine-Verifiable Constraints
+
+The architecture can be extended with an **NLS-Parser** that utilizes LLMs to extract formal constraints from natural language documentation. By analyzing `@return`, `Note:`, and `Context:` tags in kernel-doc, the suite can automatically generate Datalog facts or "Sentinel Guards" for enforcement.
+
+**Example Transformation:**
+- **Comment**: `* Note: Caller must hold the @tree_lock before calling this function.`
+- **LLM Extraction**: `MustHold(func: audit_tree_lookup, lock: tree_lock)`
+- **Datalog Enforcement**: `Violation(p) :- Call("audit_tree_lookup", p), !InLockScope("tree_lock", p).`
+
+### Microscopic Error-Handling Consistency (EHC) Revisited
+
+While EHC focuses on label-consistency, it can be significantly enhanced by combining it with comment analysis. If a comment states that a function "returns -EAGAIN on resource conflict," but the EHC analysis shows one specific error path returns `0` (success), the linter can flag a "Semantic Divergence" bug. This represents a higher class of logical failure than a simple unhandled return, as it indicates a violation of the API's documented contract.
+
+| Feature | Input Source | Analysis Type | Target Bug Class |
+| :--- | :--- | :--- | :--- |
+| **Doc-Contract** | `kernel-doc` / Comments | NLS Translation | API Contract Violation / Locking Misuse |
+| **Micro-EHC** | Local Error Labels | Structural Symmetry | Omitted Cleanup / Inconsistent Exit States |
+| **Logic Mining** | Git History + LLM | Pattern Recognition | Recurrent Semantic Regressions (RPBs) |
+
+---
+
 ## Implementation Strategy for Global Auditing
 
 The implementation of these advanced capabilities requires a stratified approach that balances the computational cost of deep reasoning with the necessity of whole-program coverage. The resulting architecture is a recursive pipeline that continuously refines its findings.
