@@ -18,3 +18,14 @@ func LoadEmbeddedQuery(name string) ([]byte, error) {
 	}
 	return data, nil
 }
+// GetRuleForExtension returns the appropriate rule name for a given file extension.
+func GetRuleForExtension(ext string) string {
+	switch ext {
+	case ".c":
+		return "unhandled_errors_c"
+	case ".cpp", ".cc", ".cxx", ".h", ".hpp":
+		return "unhandled_errors_cpp"
+	default:
+		return "unhandled_errors" // Default to Go
+	}
+}

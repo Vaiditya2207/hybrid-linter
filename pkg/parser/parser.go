@@ -4,17 +4,29 @@ import (
 	"context"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/c"
+	"github.com/smacker/go-tree-sitter/cpp"
 	"github.com/smacker/go-tree-sitter/golang"
 )
 
-// Parser wraps the tree-sitter parser for Go.
+// Parser wraps the tree-sitter parser for multiple languages.
 type Parser struct {
 	engine *sitter.Parser
 }
 
-// NewParser creates a new Go parser instance (default for V1).
+// NewParser creates a new Go parser instance (default).
 func NewParser() *Parser {
 	return NewParserWithLanguage(golang.GetLanguage())
+}
+
+// NewParserForC creates a new C parser instance.
+func NewParserForC() *Parser {
+	return NewParserWithLanguage(c.GetLanguage())
+}
+
+// NewParserForCPP creates a new CPP parser instance.
+func NewParserForCPP() *Parser {
+	return NewParserWithLanguage(cpp.GetLanguage())
 }
 
 // NewParserWithLanguage enables Phase 7 V2 architecture, dynamically

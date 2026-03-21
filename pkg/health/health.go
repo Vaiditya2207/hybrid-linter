@@ -2,14 +2,16 @@ package health
 
 import (
 	"context"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/lsp"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/parser"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/scanner"
 	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/golang"
 )
 
 // HealthIssue represents a single templated diagnostic.
@@ -34,13 +36,10 @@ type CodebaseHealth struct {
 }
 
 // Scorer analyzes a set of files to produce a health report.
-type Scorer struct {
-	analyzer  *analyzer.Analyzer
-	queryData []byte
-}
+type Scorer struct{}
 
-func NewScorer(a *analyzer.Analyzer, qd []byte) *Scorer {
-	return &Scorer{analyzer: a, queryData: qd}
+func NewScorer() *Scorer {
+	return &Scorer{}
 }
 
 // GenerateScore walks a directory using the Phase 7 scanner and computes metrics.
@@ -51,37 +50,68 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 	}
 
 	// Use our new Phase 7 Scanner to skip node_modules/venv etc.
-	scan := scanner.NewScanner([]string{".go", ".c", ".py", ".ts", ".js", ".swift", ".zig"})
+	scan := scanner.NewScanner([]string{".go", ".c", ".cc", ".cpp", ".py", ".ts", ".js", ".swift", ".zig"})
 	fileChan := make(chan scanner.FileResult, 100)
+
+	// Layer 3: Optional Clangd LSP
+	var lspClient *lsp.Client
+	if _, err := exec.LookPath("clangd"); err == nil {
+		lspClient, _ = lsp.NewClient("clangd")
+		if lspClient != nil {
+			absDir, _ := filepath.Abs(dir)
+			_ = lspClient.Initialize(ctx, "file://"+absDir)
+			defer lspClient.Close()
+		}
+	}
 
 	go func() {
 		scan.ScanDirectory(ctx, dir, fileChan)
 	}()
 
-	// Temporary V3 MVP: Hardcoded to Golang grammar for the health check.
-	// In final V3 this will use the lsp.Registry.
-	p := parser.NewParserWithLanguage(golang.GetLanguage())
-
 	for file := range fileChan {
 		health.TotalFiles++
-		// simple extension tracker
-		ext := ""
-		if idx := strings.LastIndex(file.Path, "."); idx != -1 {
-			ext = file.Path[idx+1:]
-		}
-		health.FileDistribution[ext]++
+		ext := strings.ToLower(filepath.Ext(file.Path))
+		health.FileDistribution[strings.TrimPrefix(ext, ".")]++
 
 		lines := strings.Count(string(file.Content), "\n")
 		health.TotalLines += lines
+
+		var p *parser.Parser
+		var a *analyzer.Analyzer
+		
+		ruleName := analyzer.GetRuleForExtension(ext)
+		queryData, err := analyzer.LoadEmbeddedQuery(ruleName)
+		if err != nil {
+			continue
+		}
+
+		switch ext {
+		case ".c":
+			p = parser.NewParserForC()
+			a = analyzer.NewAnalyzerForC()
+		case ".cpp", ".cc", ".cxx", ".h", ".hpp":
+			p = parser.NewParserForCPP()
+			a = analyzer.NewAnalyzerForCPP()
+		default:
+			p = parser.NewParser()
+			a = analyzer.NewAnalyzer()
+		}
 
 		tree, err := p.Parse(ctx, file.Content)
 		if err != nil {
 			continue
 		}
 
+		// Build type map for void function filtering (Layer 2: follows local includes)
+		voidFuncs := analyzer.BuildTypeMap(tree.RootNode(), file.Content, filepath.Dir(file.Path), 0)
+
+		// Notify LSP of file content (Layer 3)
+		if lspClient != nil && (ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".h" || ext == ".hpp") {
+			_ = lspClient.DidOpen(ctx, "file://"+file.Path, "c", string(file.Content))
+		}
+
 		// Count unhandled errors as a primary health metric
-		// Using the embedded rules from Phase 6
-		vulns, err := s.analyzer.Analyze(ctx, tree.RootNode(), s.queryData)
+		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, lspClient, file.Path)
 		if err == nil {
 			health.Vulnerabilities += len(vulns)
 			for _, v := range vulns {

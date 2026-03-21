@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/agent"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/engine"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/lsp"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/orchestrator"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/parser"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/scanner"
@@ -22,10 +25,9 @@ import (
 // Pipeline manages the concurrent execution of scanning and repairing.
 type Pipeline struct {
 	targetDir string
-	analyzer  *analyzer.Analyzer
 	modelPath string
-	queryData []byte
-	parser    *parser.Parser
+	analyzer  *analyzer.Analyzer // Baseline analyzer
+	parser    *parser.Parser     // Baseline parser
 }
 
 type fileJob struct {
@@ -45,13 +47,12 @@ type repairJob struct {
 }
 
 // NewPipeline initializes the concurrent architecture.
-func NewPipeline(targetDir string, a *analyzer.Analyzer, modelPath string, q []byte, p *parser.Parser) *Pipeline {
+func NewPipeline(targetDir string, modelPath string) *Pipeline {
 	return &Pipeline{
 		targetDir: targetDir,
-		analyzer:  a,
 		modelPath: modelPath,
-		queryData: q,
-		parser:    p,
+		analyzer:  analyzer.NewAnalyzer(),
+		parser:    parser.NewParser(),
 	}
 }
 
@@ -68,12 +69,23 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	scannerWg.Add(1)
 	go p.scanDirectory(ctx, fileChan, &scannerWg)
 
+	// Layer 3: Optional Clangd LSP for C/C++ precision
+	var lspClient *lsp.Client
+	if _, err := exec.LookPath("clangd"); err == nil {
+		lspClient, _ = lsp.NewClient("clangd")
+		if lspClient != nil {
+			absDir, _ := filepath.Abs(p.targetDir)
+			_ = lspClient.Initialize(ctx, "file://"+absDir)
+			defer lspClient.Close()
+		}
+	}
+
 	// Phase 2: Analyzer Workers (Filter)
 	const numAnalyzers = 4
 	var analyzerWg sync.WaitGroup
 	for i := 0; i < numAnalyzers; i++ {
 		analyzerWg.Add(1)
-		go p.analyzeFiles(ctx, fileChan, vulnChan, &analyzerWg)
+		go p.analyzeFiles(ctx, fileChan, vulnChan, &analyzerWg, lspClient)
 	}
 
 	// Close vulnChan when analyzers are done
@@ -105,7 +117,6 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	close(queuedVulns)
 
-	// We use 1 repair worker to prevent OOM on 8GB machines
 	const numRepairers = 1
 	var repairWg sync.WaitGroup
 	for i := 0; i < numRepairers; i++ {
@@ -135,7 +146,6 @@ func (p *Pipeline) scanDirectory(ctx context.Context, fileChan chan<- fileJob, w
 	scannerService := scanner.NewScanner([]string{".go", ".js", ".ts", ".py", ".c", ".cpp", ".rs", ".swift", ".zig"})
 	out := make(chan scanner.FileResult, 100)
 
-	// Run scanner in a separate goroutine
 	var scanWg sync.WaitGroup
 	scanWg.Add(1)
 	go func() {
@@ -151,23 +161,48 @@ func (p *Pipeline) scanDirectory(ctx context.Context, fileChan chan<- fileJob, w
 	scanWg.Wait()
 }
 
-func (p *Pipeline) analyzeFiles(ctx context.Context, fileChan <-chan fileJob, vulnChan chan<- vulnJob, wg *sync.WaitGroup) {
+func (p *Pipeline) analyzeFiles(ctx context.Context, fileChan <-chan fileJob, vulnChan chan<- vulnJob, wg *sync.WaitGroup, lspClient *lsp.Client) {
 	defer wg.Done()
 	
-	// Thread-safe parser instance for this specific worker goroutine
-	localParser := parser.NewParser()
-
 	for job := range fileChan {
 		select {
 		case <-ctx.Done():
 			return
 		default:
+			ext := filepath.Ext(job.path)
+			var localParser *parser.Parser
+			var localAnalyzer *analyzer.Analyzer
+			
+			ruleName := analyzer.GetRuleForExtension(ext)
+			queryData, err := analyzer.LoadEmbeddedQuery(ruleName)
+			if err != nil {
+				continue
+			}
+
+			switch ext {
+			case ".c":
+				localParser = parser.NewParserForC()
+				localAnalyzer = analyzer.NewAnalyzerForC()
+			case ".cpp", ".cc", ".cxx", ".h", ".hpp":
+				localParser = parser.NewParserForCPP()
+				localAnalyzer = analyzer.NewAnalyzerForCPP()
+			default:
+				localParser = parser.NewParser()
+				localAnalyzer = analyzer.NewAnalyzer()
+			}
+
 			tree, err := localParser.Parse(ctx, job.source)
 			if err != nil {
 				continue
 			}
 
-			vulns, err := p.analyzer.Analyze(ctx, tree.RootNode(), p.queryData)
+			// Notify LSP of file content (Layer 3)
+			if lspClient != nil && (ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".h" || ext == ".hpp") {
+				_ = lspClient.DidOpen(ctx, "file://"+job.path, "c", string(job.source))
+			}
+
+			voidFuncs := analyzer.BuildTypeMap(tree.RootNode(), job.source, filepath.Dir(job.path), 0)
+			vulns, err := localAnalyzer.Analyze(ctx, tree.RootNode(), job.source, queryData, voidFuncs, lspClient, job.path)
 			if err == nil && len(vulns) > 0 {
 				vulnChan <- vulnJob{file: job, vulns: vulns}
 			}
@@ -179,22 +214,16 @@ func (p *Pipeline) repairVulns(ctx context.Context, vulnChan <-chan vulnJob, rep
 	defer wg.Done()
 
 	if p.modelPath == "" {
-		// Just drain the channel if no model is provided
 		for range vulnChan {}
 		return
 	}
 
-	// Wait for Phase 1 to completely finish! (Already guarded by sequential flow in Run, 
-	// but we must initialize Backend_init only when we know Tree-sitter CGO is done).
-	log.Printf("Initializing inference model backend (purego) on repair worker...")
 	if err := engine.InitBackend(); err != nil {
 		log.Printf("Failed to init backend: %v", err)
 		for range vulnChan {}
 		return
 	}
 
-	// Tie the inference engine to this specific OS thread to prevent Metal context 
-	// crashes across goroutines.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -217,11 +246,8 @@ func (p *Pipeline) repairVulns(ctx context.Context, vulnChan <-chan vulnJob, rep
 			case <-ctx.Done():
 				return
 			default:
-				// V3 Feature: Trigger Chat Loop for human verification
 				bugDesc := fmt.Sprintf("%s found at %s:%d", vuln.Type, job.file.path, vuln.StartLine)
 				
-				// In a real CLI release, this would be guarded by a `-chat` flag.
-				// For this "Crazy" prototype, we enable it if a specific env/flag is set.
 				if os.Getenv("HYBRID_CHAT") == "1" {
 					contextSIU, _ := slcr.ExtractContext(job.file.source, vuln.FocusNode)
 					_, apply := terminalAgent.ChatLoop(ctx, contextSIU.String(), bugDesc)
@@ -239,8 +265,6 @@ func (p *Pipeline) repairVulns(ctx context.Context, vulnChan <-chan vulnJob, rep
 	}
 }
 
-// applyPatches receives fixes and writes them to the file cleanly via mutexes or sequential processing.
-// Since this is the only consumer of repairChan, file system writes are naturally sequential here.
 func (p *Pipeline) applyPatches(ctx context.Context, repairChan <-chan repairJob, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -249,7 +273,6 @@ func (p *Pipeline) applyPatches(ctx context.Context, repairChan <-chan repairJob
 		case <-ctx.Done():
 			return
 		default:
-			// MVP: log the successful pipeline flow with vibrant ANSI colors
 			fmt.Printf("\033[32m✅ [FILE: %s] Repaired %s at line %d:\033[0m\n", job.file.path, job.vuln.Type, job.vuln.StartLine)
 			fmt.Printf("\033[36m%s\033[0m\n\n", job.fix)
 		}

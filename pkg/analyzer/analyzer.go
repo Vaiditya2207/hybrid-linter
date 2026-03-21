@@ -4,8 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
+	"github.com/Vaiditya2207/hybrid-linter/pkg/lsp"
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/c"
+	"github.com/smacker/go-tree-sitter/cpp"
 	"github.com/smacker/go-tree-sitter/golang"
 )
 
@@ -26,15 +31,29 @@ type Analyzer struct {
 	Language *sitter.Language
 }
 
-// NewAnalyzer creates a new analyzer for Go.
+// NewAnalyzer creates a new Go analyzer instance (default).
 func NewAnalyzer() *Analyzer {
 	return &Analyzer{
 		Language: golang.GetLanguage(),
 	}
 }
 
+// NewAnalyzerForC creates a new C analyzer instance.
+func NewAnalyzerForC() *Analyzer {
+	return &Analyzer{
+		Language: c.GetLanguage(),
+	}
+}
+
+// NewAnalyzerForCPP creates a new CPP analyzer instance.
+func NewAnalyzerForCPP() *Analyzer {
+	return &Analyzer{
+		Language: cpp.GetLanguage(),
+	}
+}
+
 // Analyze runs the given SCM query against the root node of a tree.
-func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, queryData []byte) ([]Vulnerability, error) {
+func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte, queryData []byte, voidFuncs map[string]bool, lspClient *lsp.Client, filePath string) ([]Vulnerability, error) {
 	q, err := sitter.NewQuery(queryData, a.Language)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query: %w", err)
@@ -46,6 +65,8 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, queryData []b
 
 	qc.Exec(q, root)
 
+	noiseRegex := regexp.MustCompile(`^(pr_|print|dev_|EXPORT_|MODULE_|__setup|late_init|core_init|postcore_init|arch_init|subsys_init|fs_init|device_init|pure_init|module_init|module_exit|WARN|BUG|panic|mutex_|spin_|raw_spin_|read_lock|read_unlock|write_lock|write_unlock|rcu_|debugfs_|trace_|lockdep_|smp_|cpu_|kfree|kmem_cache_free|free_page|vfree|put_device|put_task_struct|wait_event|wake_up|do_div|ktime_|memset|memcpy|memmove|strcpy|strcat|sprintf|snprintf|snprint|scnprintf|pr_cont|seq_printf|seq_puts)`)
+
 	var vulnerabilities []Vulnerability
 	for {
 		m, ok := qc.NextMatch()
@@ -53,8 +74,41 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, queryData []b
 			break
 		}
 
+		// Manual noise filtration: If any capture named '_func' matches the noise regex OR is a void function, skip this match.
+		skipMatch := false
 		for _, cap := range m.Captures {
 			captureName := q.CaptureNameForId(cap.Index)
+			if captureName == "_func" {
+				funcName := cap.Node.Content(source)
+				if noiseRegex.MatchString(funcName) || voidFuncs[funcName] {
+					skipMatch = true
+					break
+				}
+
+				// Layer 3: LSP Check
+				if lspClient != nil && filePath != "" {
+					// Use LSP to check return type
+					fileURI := "file://" + filePath
+					hover, err := lspClient.GetHover(ctx, fileURI, int(cap.Node.StartPoint().Row), int(cap.Node.StartPoint().Column))
+					if err == nil && hover != "" {
+						if strings.HasPrefix(hover, "void ") || strings.Contains(hover, "-> void") {
+							skipMatch = true
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if skipMatch {
+			continue
+		}
+
+		for _, cap := range m.Captures {
+			captureName := q.CaptureNameForId(cap.Index)
+			if len(captureName) > 0 && captureName[0] == '_' {
+				continue
+			}
 			node := cap.Node
 
 			vulnerabilities = append(vulnerabilities, Vulnerability{
