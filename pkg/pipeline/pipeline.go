@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/agent"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/engine"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/lsp"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/orchestrator"
@@ -24,10 +24,11 @@ import (
 
 // Pipeline manages the concurrent execution of scanning and repairing.
 type Pipeline struct {
-	targetDir string
-	modelPath string
-	analyzer  *analyzer.Analyzer // Baseline analyzer
-	parser    *parser.Parser     // Baseline parser
+	targetDir   string
+	modelPath   string
+	adjudicator *analyzer.Adjudicator
+	analyzer    *analyzer.Analyzer // Baseline analyzer
+	parser      *parser.Parser     // Baseline parser
 }
 
 type fileJob struct {
@@ -47,12 +48,17 @@ type repairJob struct {
 }
 
 // NewPipeline initializes the concurrent architecture.
-func NewPipeline(targetDir string, modelPath string) *Pipeline {
+func NewPipeline(targetDir string, modelPath string, eng *engine.Engine) *Pipeline {
+	var adj *analyzer.Adjudicator
+	if eng != nil {
+		adj = analyzer.NewAdjudicator(eng)
+	}
 	return &Pipeline{
-		targetDir: targetDir,
-		modelPath: modelPath,
-		analyzer:  analyzer.NewAnalyzer(),
-		parser:    parser.NewParser(),
+		targetDir:   targetDir,
+		modelPath:   modelPath,
+		adjudicator: adj,
+		analyzer:    analyzer.NewAnalyzer(),
+		parser:      parser.NewParser(),
 	}
 }
 
@@ -94,8 +100,6 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		close(vulnChan)
 	}()
 
-	// Collect all vulnerabilities sequentially to prevent Tree-sitter (CGO)
-	// from overlapping with gollama.cpp (mmap) on macOS which causes SIGABRT.
 	var allVulns []vulnJob
 	for v := range vulnChan {
 		allVulns = append(allVulns, v)
@@ -204,7 +208,7 @@ func (p *Pipeline) analyzeFiles(ctx context.Context, fileChan <-chan fileJob, vu
 			voidFuncs := analyzer.BuildTypeMap(tree.RootNode(), job.source, filepath.Dir(job.path), 0)
 			mustCheckFuncs := analyzer.ScanForMustCheck(tree.RootNode(), job.source)
 			
-			vulns, err := localAnalyzer.Analyze(ctx, tree.RootNode(), job.source, queryData, voidFuncs, mustCheckFuncs, lspClient, nil, job.path)
+			vulns, err := localAnalyzer.Analyze(ctx, tree.RootNode(), job.source, queryData, voidFuncs, mustCheckFuncs, lspClient, p.adjudicator, job.path)
 			if err == nil && len(vulns) > 0 {
 				vulnChan <- vulnJob{file: job, vulns: vulns}
 			}

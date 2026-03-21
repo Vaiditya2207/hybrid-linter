@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Vaiditya2207/hybrid-linter/pkg/analyzer"
+	"github.com/Vaiditya2207/hybrid-linter/pkg/engine"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/lsp"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/parser"
 	"github.com/Vaiditya2207/hybrid-linter/pkg/scanner"
@@ -43,10 +44,15 @@ func NewScorer() *Scorer {
 }
 
 // GenerateScore walks a directory using the Phase 7 scanner and computes metrics.
-func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth, error) {
+func (s *Scorer) GenerateScore(ctx context.Context, dir string, eng *engine.Engine) (*CodebaseHealth, error) {
 	start := time.Now()
 	health := &CodebaseHealth{
 		FileDistribution: make(map[string]int),
+	}
+
+	var adj *analyzer.Adjudicator
+	if eng != nil {
+		adj = analyzer.NewAdjudicator(eng)
 	}
 
 	// Use our new Phase 7 Scanner to skip node_modules/venv etc.
@@ -112,7 +118,7 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 		}
 
 		// Count unhandled errors as a primary health metric
-		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, mustCheckFuncs, lspClient, nil, file.Path)
+		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, mustCheckFuncs, lspClient, adj, file.Path)
 		if err == nil {
 			health.Vulnerabilities += len(vulns)
 			for _, v := range vulns {
@@ -138,6 +144,9 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 }
 
 func (s *Scorer) estimateComplexity(n *sitter.Node) int {
+	if n == nil {
+		return 0
+	}
 	count := 0
 	// Basic complexity nodes in most grammars (if, for, func)
 	for i := 0; i < int(n.NamedChildCount()); i++ {
