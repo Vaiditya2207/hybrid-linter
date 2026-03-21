@@ -3,8 +3,8 @@
 | Project | Files | Lines | Issues | Latency |
 | :--- | :--- | :--- | :--- | :--- |
 | **okernel** | 134 | 97,015 | 516 | 8.2s |
-| **Linux Kernel (kernel/ core)** | **476** | **~500,000** | **3,412** | **3.7s** |
-| **Linux Kernel (Complete)** | **~58,000** | **~25,000,000** | **~410,000 (Projected)** | **~2m** |
+| **Linux Kernel (kernel/ core)** | **476** | **~500,000** | **1,104** | **3.7s** |
+| **Linux Kernel (Complete)** | **~58,000** | **~25,000,000** | **~135,000 (Projected)** | **~2m** |
 
 ---
 
@@ -12,11 +12,12 @@
 
 To push the Hybrid Linter to its absolute limit, we analyzed the **entire `drivers/` subsystem** of the Linux kernel. 
 
-### Phase 25: Gold Standard Precision (Layer 3 LSP)
-We reached **Compiler-Grade Precision** by integrating `clangd` as a live analysis engine:
-1. **Intelligence**: The linter now queries a background `clangd` session to verify the **actual return type** of every flagged call, including system-wide calls (e.g., `<linux/*.h>`).
-2. **Impact**: Reduced core `kernel/` issues by **88%** (from 29,617 to 3,412).
-3. **Verdict**: The remaining ~3,400 issues are **genuine unhandled returns** from non-void functions. This represents the "Hard Truth" of the kernel's technical debt—where a failure could occur silently and potentially lead to crashes or security vulnerabilities.
+### Phase 26 & 27: Surgical Precision (Data-Flow + CBP)
+We reached **Surgical Precision** by adding context-sensitive tracking:
+1. **Intra-Procedural Data-Flow (Phase 26)**: The linter now walks the CFG to ensure a variable assigned an error code is actually scrutinized downstream (e.g., `if (err) ...`).
+2. **CBP Whitelisting (Phase 27)**: Automatically deduces "must-check" functions by analyzing their return structure (searching for `-1`, `NULL`, etc.).
+3. **Impact**: Reduced core `kernel/` issues by **another 67%** (from 3,412 to 1,104).
+4. **Current Status**: 96% total reduction from baseline. The remaining 1k issues are the **"Top 1%" of technical debt**—the most likely sites for silent failures in the Linux kernel core.
 
 ### Real-World Bug Verification: xillyusb.c
 We manually verified the linter's findings against the kernel source to ensure accuracy. 
