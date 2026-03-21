@@ -144,6 +144,10 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 		}
 	}
 
+	// Phase 28: Resource Leak Detection
+	leaks := ScanForLeaks(root, source)
+	vulnerabilities = append(vulnerabilities, leaks...)
+
 	return vulnerabilities, nil
 }
 
