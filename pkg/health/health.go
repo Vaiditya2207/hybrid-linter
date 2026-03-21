@@ -102,8 +102,9 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 			continue
 		}
 
-		// Build type map for void function filtering (Layer 2: follows local includes)
+		// Build type maps for filtering
 		voidFuncs := analyzer.BuildTypeMap(tree.RootNode(), file.Content, filepath.Dir(file.Path), 0)
+		mustCheckFuncs := analyzer.ScanForMustCheck(tree.RootNode(), file.Content)
 
 		// Notify LSP of file content (Layer 3)
 		if lspClient != nil && (ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".h" || ext == ".hpp") {
@@ -111,7 +112,7 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 		}
 
 		// Count unhandled errors as a primary health metric
-		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, lspClient, file.Path)
+		vulns, err := a.Analyze(ctx, tree.RootNode(), file.Content, queryData, voidFuncs, mustCheckFuncs, lspClient, file.Path)
 		if err == nil {
 			health.Vulnerabilities += len(vulns)
 			for _, v := range vulns {

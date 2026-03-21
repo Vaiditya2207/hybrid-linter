@@ -53,7 +53,7 @@ func NewAnalyzerForCPP() *Analyzer {
 }
 
 // Analyze runs the given SCM query against the root node of a tree.
-func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte, queryData []byte, voidFuncs map[string]bool, lspClient *lsp.Client, filePath string) ([]Vulnerability, error) {
+func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte, queryData []byte, voidFuncs map[string]bool, mustCheckFuncs map[string]bool, lspClient *lsp.Client, filePath string) ([]Vulnerability, error) {
 	q, err := sitter.NewQuery(queryData, a.Language)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query: %w", err)
@@ -74,26 +74,37 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 			break
 		}
 
-		// Manual noise filtration: If any capture named '_func' matches the noise regex OR is a void function, skip this match.
+		// Manual noise filtration
 		skipMatch := false
 		for _, cap := range m.Captures {
 			captureName := q.CaptureNameForId(cap.Index)
 			if captureName == "_func" {
 				funcName := cap.Node.Content(source)
+				
+				// Layer 1 & 2: Void/Static checks
 				if noiseRegex.MatchString(funcName) || voidFuncs[funcName] {
 					skipMatch = true
 					break
 				}
+				
+				// Phase 27: CBP Whitelist
+				// If we have a whitelist and this function isn't in it, we cautiously skip it
+				// unless LSP (Layer 3) confirms it's a must-check.
+				if mustCheckFuncs != nil && !mustCheckFuncs[funcName] {
+					skipMatch = true 
+				}
 
-				// Layer 3: LSP Check
+				// Layer 3: LSP Check (Precision override)
 				if lspClient != nil && filePath != "" {
-					// Use LSP to check return type
 					fileURI := "file://" + filePath
 					hover, err := lspClient.GetHover(ctx, fileURI, int(cap.Node.StartPoint().Row), int(cap.Node.StartPoint().Column))
 					if err == nil && hover != "" {
 						if strings.HasPrefix(hover, "void ") || strings.Contains(hover, "-> void") {
 							skipMatch = true
 							break
+						} else {
+							// If LSP definitely says it's NOT void, we ignore the CBP whitelist skip
+							skipMatch = false
 						}
 					}
 				}
@@ -110,6 +121,15 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 				continue
 			}
 			node := cap.Node
+
+			// Phase 26: Data-Flow Check
+			// If this is a variable assignment, check if it's handled
+			if captureName == "err" {
+				varName := node.Content(source)
+				if IsVariableHandled(root, varName, node.StartPoint().Row, source) {
+					continue
+				}
+			}
 
 			vulnerabilities = append(vulnerabilities, Vulnerability{
 				ID:        captureName,

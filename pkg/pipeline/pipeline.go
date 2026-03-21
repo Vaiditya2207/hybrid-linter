@@ -202,7 +202,9 @@ func (p *Pipeline) analyzeFiles(ctx context.Context, fileChan <-chan fileJob, vu
 			}
 
 			voidFuncs := analyzer.BuildTypeMap(tree.RootNode(), job.source, filepath.Dir(job.path), 0)
-			vulns, err := localAnalyzer.Analyze(ctx, tree.RootNode(), job.source, queryData, voidFuncs, lspClient, job.path)
+			mustCheckFuncs := analyzer.ScanForMustCheck(tree.RootNode(), job.source)
+			
+			vulns, err := localAnalyzer.Analyze(ctx, tree.RootNode(), job.source, queryData, voidFuncs, mustCheckFuncs, lspClient, job.path)
 			if err == nil && len(vulns) > 0 {
 				vulnChan <- vulnJob{file: job, vulns: vulns}
 			}
