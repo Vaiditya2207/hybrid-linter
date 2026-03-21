@@ -65,7 +65,66 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 
 	qc.Exec(q, root)
 
-	noiseRegex := regexp.MustCompile(`^(pr_|print|dev_|EXPORT_|MODULE_|__setup|late_init|core_init|postcore_init|arch_init|subsys_init|fs_init|device_init|pure_init|module_init|module_exit|WARN|BUG|panic|mutex_|spin_|raw_spin_|read_lock|read_unlock|write_lock|write_unlock|rcu_|debugfs_|trace_|lockdep_|smp_|cpu_|kfree|kmem_cache_free|free_page|vfree|put_device|put_task_struct|wait_event|wake_up|do_div|ktime_|memset|memcpy|memmove|strcpy|strcat|sprintf|snprintf|snprint|scnprintf|pr_cont|seq_printf|seq_puts)`)
+	// Expansive noise filter: kernel functions whose return values are routinely discarded by design.
+	// Categories: logging, lifecycle, synchronization, memory-free, reference counting, init macros,
+	// tracing, scheduling, assertion, registration, notification, timer, workqueue, IRQ, mm, networking.
+	noiseRegex := regexp.MustCompile(`^(` +
+		// Logging and printing
+		`pr_|print|dev_|dev_err|dev_warn|dev_info|dev_dbg|dev_notice|` +
+		`EXPORT_|MODULE_|__setup|DEFINE_|DECLARE_|LIST_HEAD|` +
+		// Init macros
+		`late_init|core_init|postcore_init|arch_init|subsys_init|fs_init|device_init|pure_init|module_init|module_exit|` +
+		// Assertions and panics
+		`WARN|WARN_ON|WARN_ONCE|BUG|BUG_ON|panic|` +
+		// Locking (acquire AND release - both return void)
+		`mutex_lock|mutex_unlock|mutex_init|mutex_destroy|spin_lock|spin_unlock|raw_spin_lock|raw_spin_unlock|` +
+		`read_lock|read_unlock|write_lock|write_unlock|rcu_read_lock|rcu_read_unlock|` +
+		`down_read|down_write|up_read|up_write|rwlock_init|` +
+		`spin_lock_init|spin_lock_irq|spin_unlock_irq|spin_lock_bh|spin_unlock_bh|` +
+		`local_irq_save|local_irq_restore|local_irq_disable|local_irq_enable|` +
+		`preempt_disable|preempt_enable|` +
+		// Debug and tracing
+		`debugfs_|trace_|lockdep_|ftrace_|` +
+		// SMP and CPU
+		`smp_|cpu_|per_cpu|get_cpu|put_cpu|` +
+		// Memory free (never fail)
+		`kfree|kvfree|vfree|free_page|free_pages|kmem_cache_free|__free_pages|` +
+		`put_page|page_cache_release|folio_put|` +
+		// Reference counting (return void or always succeed)
+		`put_device|put_task_struct|fput|fdput|mntput|dput|iput|path_put|` +
+		`kobject_put|kref_put|module_put|` +
+		`get_device|get_task_struct|fget|igrab|` +
+		`atomic_set|atomic_inc|atomic_dec|atomic_add|atomic_sub|` +
+		`refcount_set|refcount_inc|refcount_dec|` +
+		`kref_init|kref_get|` +
+		// Scheduling and waiting
+		`wait_event|wake_up|schedule|set_current_state|__set_current_state|` +
+		`schedule_timeout|schedule_work|queue_work|queue_delayed_work|` +
+		`complete|complete_all|init_completion|reinit_completion|` +
+		// Math and string (always succeed or return into expressions)
+		`do_div|min|max|clamp|abs|` +
+		`memset|memcpy|memmove|memzero_explicit|` +
+		`strcpy|strncpy|strlcpy|strcat|strncat|strlcat|` +
+		`sprintf|snprintf|scnprintf|vsnprintf|` +
+		// Seq file output
+		`seq_printf|seq_puts|seq_putc|seq_write|pr_cont|` +
+		// Notification and callback
+		`notifier_chain_register|blocking_notifier_chain_register|` +
+		`notifier_chain_unregister|` +
+		// Timer
+		`timer_setup|mod_timer|del_timer|del_timer_sync|add_timer|setup_timer|` +
+		`hrtimer_init|hrtimer_start|hrtimer_cancel|` +
+		// IRQ
+		`enable_irq|disable_irq|free_irq|` +
+		`irq_set_handler|irq_set_chip|` +
+		// Misc void operations
+		`INIT_LIST_HEAD|list_add|list_add_tail|list_del|list_del_init|list_move|list_move_tail|` +
+		`INIT_WORK|INIT_DELAYED_WORK|` +
+		`set_bit|clear_bit|test_and_set_bit|test_and_clear_bit|` +
+		`sysfs_|` +
+		`ktime_|` +
+		`cond_resched` +
+		`)`)
 
 	var vulnerabilities []Vulnerability
 	for {
@@ -144,9 +203,10 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 		}
 	}
 
-	// Phase 28: Resource Leak Detection
-	leaks := ScanForLeaks(root, source)
-	vulnerabilities = append(vulnerabilities, leaks...)
+	// Phase 28: Resource Leak Detection (disabled in default mode -- too many FPs from kernel goto chains)
+	// To enable: use -leaks flag (future)
+	// leaks := ScanForLeaks(root, source)
+	// vulnerabilities = append(vulnerabilities, leaks...)
 
 	// Phase 29: Neural Adjudication
 	if adjudicator != nil && len(vulnerabilities) > 0 {
