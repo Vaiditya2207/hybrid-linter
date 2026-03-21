@@ -132,7 +132,7 @@ func (p *Pipeline) scanDirectory(ctx context.Context, fileChan chan<- fileJob, w
 	defer wg.Done()
 	defer close(fileChan)
 
-	scannerService := scanner.NewScanner([]string{".go", ".js", ".ts", ".py", ".c", ".cpp", ".rs", ".swift"})
+	scannerService := scanner.NewScanner([]string{".go", ".js", ".ts", ".py", ".c", ".cpp", ".rs", ".swift", ".zig"})
 	out := make(chan scanner.FileResult, 100)
 
 	// Run scanner in a separate goroutine

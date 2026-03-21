@@ -51,7 +51,7 @@ func (s *Scorer) GenerateScore(ctx context.Context, dir string) (*CodebaseHealth
 	}
 
 	// Use our new Phase 7 Scanner to skip node_modules/venv etc.
-	scan := scanner.NewScanner([]string{".go", ".c", ".py", ".ts", ".js"})
+	scan := scanner.NewScanner([]string{".go", ".c", ".py", ".ts", ".js", ".swift", ".zig"})
 	fileChan := make(chan scanner.FileResult, 100)
 
 	go func() {

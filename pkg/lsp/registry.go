@@ -73,6 +73,14 @@ func (r *Registry) registerDefaults() {
 		LSPBinary:    "sourcekit-lsp",
 		LSPArgs:      []string{},
 	})
+
+	// Zig
+	r.addConfig(&LanguageConfig{
+		LanguageName: "zig",
+		Extensions:   []string{".zig"},
+		LSPBinary:    "zls",
+		LSPArgs:      []string{},
+	})
 }
 
 func (r *Registry) addConfig(cfg *LanguageConfig) {
