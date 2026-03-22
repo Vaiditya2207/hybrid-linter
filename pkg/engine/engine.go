@@ -47,8 +47,8 @@ func NewEngine(modelPath string) (*Engine, error) {
 
 	// Create context. Setting NCtx and NBatch explicitly.
 	cparams := gollama.Context_default_params()
-	cparams.NCtx = 2048
-	cparams.NBatch = 2048
+	cparams.NCtx = 4096
+	cparams.NBatch = 4096
 	cparams.NThreads = int32(runtime.NumCPU())
 
 	ctx, err := gollama.Init_from_model(model, cparams)
@@ -125,8 +125,8 @@ func (e *Engine) ResetKV() error {
 	}
 	
 	cparams := gollama.Context_default_params()
-	cparams.NCtx = 2048
-	cparams.NBatch = 2048
+	cparams.NCtx = 4096
+	cparams.NBatch = 4096
 	cparams.NThreads = int32(runtime.NumCPU())
 
 	ctx, err := gollama.Init_from_model(e.model, cparams)

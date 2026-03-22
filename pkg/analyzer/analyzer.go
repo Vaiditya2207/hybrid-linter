@@ -203,10 +203,30 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 		}
 	}
 
-	// Phase 28: Resource Leak Detection (disabled in default mode -- too many FPs from kernel goto chains)
-	// To enable: use -leaks flag (future)
-	// leaks := ScanForLeaks(root, source)
-	// vulnerabilities = append(vulnerabilities, leaks...)
+	/* High-Fidelity Phases (Disabled for stability - See /tmp/next_phases.md)
+	// Phase 30: Microscopic Error-Handling Consistency (Hector EHC)
+	ehcVulns := ScanForEHCInconsistencies(root, source)
+	vulnerabilities = append(vulnerabilities, ehcVulns...)
+
+	// Phase 31: Natural Language Specification (NLS) Documentation Auditing
+	if adjudicator != nil {
+		var walkNLS func(*sitter.Node)
+		walkNLS = func(n *sitter.Node) {
+			if n.Type() == "function_definition" {
+				if findPrecedingComment(n, source) != "" {
+					constraint, err := adjudicator.ExtractDocConstraints(ctx, n, source)
+					if err == nil && constraint != nil {
+						nlsVulns := a.VerifyNLSConstraints(n, source, constraint)
+						vulnerabilities = append(vulnerabilities, nlsVulns...)
+					}
+				}
+			}
+			for i := 0; i < int(n.ChildCount()); i++ {
+				walkNLS(n.Child(i))
+			}
+		}
+		walkNLS(root)
+	}
 
 	// Phase 29: Neural Adjudication
 	if adjudicator != nil && len(vulnerabilities) > 0 {
@@ -221,6 +241,7 @@ func (a *Analyzer) Analyze(ctx context.Context, root *sitter.Node, source []byte
 		}
 		vulnerabilities = pruned
 	}
+	*/
 
 	return vulnerabilities, nil
 }
